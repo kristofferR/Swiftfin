@@ -243,6 +243,9 @@ final class MediaPlayerManager: ViewModel {
 
     private var initialMediaPlayerItemProvider: MediaPlayerItemProvider?
 
+    /// The engine for this session, chosen when it starts so that later items match the proxy.
+    let videoPlayerType: VideoPlayerType
+
     // MARK: init
 
 //    static let empty: MediaPlayerManager = .init()
@@ -261,6 +264,7 @@ final class MediaPlayerManager: ViewModel {
         self.queue = queue.map { AnyMediaPlayerQueue($0) }
         self.state = .loadingItem
         self.initialMediaPlayerItemProvider = provider
+        self.videoPlayerType = provider.videoPlayerType
         super.init()
 
         self.queue?.manager = self
@@ -273,6 +277,7 @@ final class MediaPlayerManager: ViewModel {
         self.selectedItem = playbackItem.baseItem
         self.queue = queue.map { AnyMediaPlayerQueue($0) }
         self.state = .playback
+        self.videoPlayerType = Defaults[.VideoPlayer.videoPlayerType]
         super.init()
 
         self.queue?.manager = self
@@ -340,7 +345,7 @@ final class MediaPlayerManager: ViewModel {
         item = provider.item
         setSupplements()
         proxy?.stop()
-        playbackItem = try await provider()
+        playbackItem = try await provider(videoPlayerType: videoPlayerType)
     }
 
     @Function(\Action.Cases.setBitrate)
@@ -425,7 +430,7 @@ final class MediaPlayerManager: ViewModel {
         }
 
         self.initialMediaPlayerItemProvider = nil
-        playbackItem = try await initialMediaPlayerItemProvider()
+        playbackItem = try await initialMediaPlayerItemProvider(videoPlayerType: videoPlayerType)
     }
 
     // TODO: remove playback item?
@@ -479,6 +484,7 @@ final class MediaPlayerManager: ViewModel {
             mediaSource: currentItem.mediaSource,
             audioStreamIndex: audioStreamIndex ?? currentItem.selectedAudioStreamIndex,
             subtitleStreamIndex: subtitleStreamIndex ?? currentItem.selectedSubtitleStreamIndex,
+            videoPlayerType: videoPlayerType,
             requestedBitrate: requestedBitrate ?? currentItem.requestedBitrate,
             modifyItem: { item in
                 if item.userData == nil {

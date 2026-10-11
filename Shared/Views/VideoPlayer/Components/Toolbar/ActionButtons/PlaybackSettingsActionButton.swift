@@ -25,10 +25,11 @@ extension VideoPlayer.PlaybackControls.Toolbar.ActionButtons {
             adjustedBaseItem.userData?.playbackPositionTicks = manager.seconds.ticks
             let requestedBitrate = playbackItem.requestedBitrate
 
-            return MediaPlayerItemProvider(item: adjustedBaseItem, mediaSource: mediaSource) { baseItem, modifyItem in
+            return MediaPlayerItemProvider(item: adjustedBaseItem, mediaSource: mediaSource) { baseItem, videoPlayerType, modifyItem in
                 try await MediaPlayerItem.build(
                     for: baseItem,
                     mediaSource: mediaSource,
+                    videoPlayerType: videoPlayerType,
                     requestedBitrate: requestedBitrate,
                     modifyItem: modifyItem
                 )

@@ -73,6 +73,8 @@ class MediaPlayerItem: ViewModel, MediaPlayerObserver {
     let previewImageProvider: (any PreviewImageProvider)?
     let thumbnailProvider: ThumbnailProvider?
     let url: URL
+    /// The original file, when AVPlayer plays its selected TrueHD Atmos or DTS:X track as spatial audio beside the video at `url`.
+    let spatialAudioURL: URL?
 
     let audioStreams: [MediaStream]
     let subtitleStreams: [MediaStream]
@@ -87,6 +89,7 @@ class MediaPlayerItem: ViewModel, MediaPlayerObserver {
         mediaSource: MediaSourceInfo,
         playSessionID: String,
         url: URL,
+        spatialAudioURL: URL? = nil,
         requestedBitrate: PlaybackBitrate = .max,
         deviceProfile: DeviceProfile,
         initialAudioStreamIndex: Int? = nil,
@@ -104,6 +107,7 @@ class MediaPlayerItem: ViewModel, MediaPlayerObserver {
         self.previewImageProvider = previewImageProvider
         self.thumbnailProvider = thumbnailProvider
         self.url = url
+        self.spatialAudioURL = spatialAudioURL
 
         let mediaStreams = mediaSource.mediaStreams
         let isTranscoding = mediaSource.transcodingURL != nil

@@ -250,7 +250,7 @@ extension BaseItemDto {
         case .program:
             guard isAiring, let userSession else { return nil }
 
-            return MediaPlayerItemProvider(item: self) { program, modifyItem in
+            return MediaPlayerItemProvider(item: self) { program, videoPlayerType, modifyItem in
                 guard let channel = try? await program.getChannel(
                     for: program,
                     userSession: userSession
@@ -260,6 +260,7 @@ extension BaseItemDto {
 
                 return try await MediaPlayerItem.build(
                     for: channel,
+                    videoPlayerType: videoPlayerType,
                     modifyItem: modifyItem
                 )
             }
@@ -273,12 +274,13 @@ extension BaseItemDto {
                 audioStreamIndex: audioStreamIndex,
                 subtitleStreamIndex: subtitleStreamIndex,
                 requestedBitrate: requestedBitrate
-            ) { item, modifyItem in
+            ) { item, videoPlayerType, modifyItem in
                 try await MediaPlayerItem.build(
                     for: item,
                     mediaSource: selectedMediaSource,
                     audioStreamIndex: audioStreamIndex,
                     subtitleStreamIndex: subtitleStreamIndex,
+                    videoPlayerType: videoPlayerType,
                     requestedBitrate: requestedBitrate,
                     modifyItem: modifyItem
                 )

@@ -9,8 +9,11 @@
 import Defaults
 import JellyfinAPI
 
-typealias MediaPlayerItemProviderResolver = @MainActor @Sendable (BaseItemDto, (@Sendable (inout BaseItemDto) -> Void)?) async throws
-    -> MediaPlayerItem
+typealias MediaPlayerItemProviderResolver = @MainActor @Sendable (
+    BaseItemDto,
+    VideoPlayerType,
+    (@Sendable (inout BaseItemDto) -> Void)?
+) async throws -> MediaPlayerItem
 
 @MainActor
 struct MediaPlayerItemProvider {
@@ -55,10 +58,26 @@ struct MediaPlayerItemProvider {
         return copy
     }
 
-    func callAsFunction() async throws -> MediaPlayerItem {
+    /// The engine to play this item with.
+    /// A selected TrueHD Atmos or DTS:X track plays as spatial audio through AVPlayer, unless an image subtitle is
+    /// also selected: AVPlayer has the server burn it into the video, which the other engines avoid.
+    var videoPlayerType: VideoPlayerType {
+        let preferredPlayerType = Defaults[.VideoPlayer.videoPlayerType]
+
+        guard let mediaSource = mediaSource ?? item.mediaSources?.first,
+              mediaSource.supportsSpatialAudio(audioStreamIndex: audioStreamIndex ?? mediaSource.defaultAudioStreamIndex)
+        else { return preferredPlayerType }
+
+        let subtitleStreamIndex = subtitleStreamIndex ?? mediaSource.defaultSubtitleStreamIndex
+        let subtitleStream = mediaSource.subtitleStreams?.first { $0.index == subtitleStreamIndex }
+
+        return subtitleStream?.isTextSubtitleStream == false ? preferredPlayerType : .avPlayer
+    }
+
+    func callAsFunction(videoPlayerType: VideoPlayerType) async throws -> MediaPlayerItem {
         guard let item = $item.value else { throw ItemStore.StoreError.itemUnavailable }
 
-        let playbackItem = try await resolver(item, modifyItem)
+        let playbackItem = try await resolver(item, videoPlayerType, modifyItem)
         guard $item.value != nil else { throw ItemStore.StoreError.itemUnavailable }
 
         return playbackItem

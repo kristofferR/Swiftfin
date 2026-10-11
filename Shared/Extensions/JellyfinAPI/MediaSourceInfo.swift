@@ -7,6 +7,7 @@
 //
 
 import CoreTransferable
+import Defaults
 import JellyfinAPI
 
 extension MediaSourceInfo: Displayable {
@@ -44,6 +45,22 @@ extension MediaSourceInfo {
 
     var videoStreams: [MediaStream]? {
         mediaStreams?.filter { $0.type == .video }
+    }
+
+    /// Whether AVPlayer can play this audio stream as spatial audio.
+    /// SpatialAudioBridge converts TrueHD Atmos and DTS:X tracks in Matroska files on iOS and tvOS 26.
+    func supportsSpatialAudio(audioStreamIndex: Int?) -> Bool {
+        guard #available(iOS 26, tvOS 26, *),
+              Defaults[.VideoPlayer.spatialAudio],
+              container == "mkv",
+              let stream = audioStreams?.first(where: { $0.index == audioStreamIndex }),
+              stream.isExternal != true
+        else { return false }
+
+        return switch (stream.codec, stream.audioSpatialFormat) {
+        case ("truehd", .dolbyAtmos), ("dts", .dtsx): true
+        default: false
+        }
     }
 }
 

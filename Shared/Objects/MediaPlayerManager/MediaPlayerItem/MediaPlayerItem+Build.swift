@@ -140,6 +140,26 @@ extension MediaPlayerItem {
             logger: logger
         )
 
+        // AVPlayer plays TrueHD Atmos and DTS:X as spatial audio converted from the original file,
+        // beside the server's video. Reading that file needs its full bitrate.
+        let spatialAudioURL: URL? = if videoPlayerType == .avPlayer,
+                                       mediaSource.transcodingURL != nil,
+                                       mediaSource.bitrate ?? 0 <= maxBitrate,
+                                       mediaSource.supportsSpatialAudio(
+                                           audioStreamIndex: audioStreamIndex ?? mediaSource.defaultAudioStreamIndex
+                                       )
+        {
+            try staticVideoStreamURL(
+                itemID: itemID,
+                item: item,
+                mediaSource: mediaSource,
+                playSessionID: playSessionID,
+                userSession: userSession
+            )
+        } else {
+            nil
+        }
+
         let previewImageProvider: (any PreviewImageProvider)? = {
             let previewImageScrubbingSetting = StoredValues[.User.previewImageScrubbing]
             lazy var chapterPreviewImageProvider: ChapterPreviewImageProvider? = {
@@ -176,6 +196,7 @@ extension MediaPlayerItem {
             mediaSource: mediaSource,
             playSessionID: playSessionID,
             url: playbackURL,
+            spatialAudioURL: spatialAudioURL,
             requestedBitrate: requestedBitrate,
             deviceProfile: deviceProfile,
             initialAudioStreamIndex: audioStreamIndex,
@@ -212,23 +233,13 @@ extension MediaPlayerItem {
 
             logger.trace("Making video stream URL for item \(itemID)")
 
-            let videoStreamParameters = Paths.GetVideoStreamParameters(
-                isStatic: true,
-                tag: mediaSource.eTag ?? item.etag,
-                playSessionID: playSessionID,
-                mediaSourceID: mediaSource.id ?? itemID,
-                liveStreamID: mediaSource.liveStreamID
-            )
-
-            let videoStreamRequest = Paths.getVideoStream(
+            return try staticVideoStreamURL(
                 itemID: itemID,
-                parameters: videoStreamParameters
+                item: item,
+                mediaSource: mediaSource,
+                playSessionID: playSessionID,
+                userSession: userSession
             )
-
-            guard let videoStreamURL = userSession.client.url(with: videoStreamRequest)
-            else { throw ErrorMessage("Unable to make video stream URL") }
-
-            return videoStreamURL
         }
 
         logger.trace("Using media source path for item \(itemID)")
@@ -238,5 +249,33 @@ extension MediaPlayerItem {
         ) else { throw ErrorMessage("Unable to make stream URL") }
 
         return streamURL
+    }
+
+    /// The original file, without transcoding.
+    private static func staticVideoStreamURL(
+        itemID: String,
+        item: BaseItemDto,
+        mediaSource: MediaSourceInfo,
+        playSessionID: String,
+        userSession: UserSession
+    ) throws -> URL {
+
+        let videoStreamParameters = Paths.GetVideoStreamParameters(
+            isStatic: true,
+            tag: mediaSource.eTag ?? item.etag,
+            playSessionID: playSessionID,
+            mediaSourceID: mediaSource.id ?? itemID,
+            liveStreamID: mediaSource.liveStreamID
+        )
+
+        let videoStreamRequest = Paths.getVideoStream(
+            itemID: itemID,
+            parameters: videoStreamParameters
+        )
+
+        guard let videoStreamURL = userSession.client.url(with: videoStreamRequest)
+        else { throw ErrorMessage("Unable to make video stream URL") }
+
+        return videoStreamURL
     }
 }

@@ -1,5 +1,5 @@
 {
-  "originHash" : "172fa81da963fb365f44b7771b055ebb784420e1a02316cadc96e02e818d401f",
+  "originHash" : "690468305b56c226896fff48fa3bfb622db187afbe8996c467d559be80892d5f",
   "pins" : [
     {
       "identity" : "blurhashkit",
@@ -197,6 +197,15 @@
       "state" : {
         "revision" : "477e9ef76615f0b76b43bb502af432fe6750b704",
         "version" : "5.1.0"
+      }
+    },
+    {
+      "identity" : "spatialaudiobridge",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/kristofferR/SpatialAudioBridge",
+      "state" : {
+        "revision" : "7ac10a15bba81a7fc4349f55869982a15d975087",
+        "version" : "1.1.1"
       }
     },
     {

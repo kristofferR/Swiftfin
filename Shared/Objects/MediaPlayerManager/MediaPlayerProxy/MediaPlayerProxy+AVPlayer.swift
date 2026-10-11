@@ -11,6 +11,8 @@ import AVKit
 import Defaults
 import Foundation
 @preconcurrency import JellyfinAPI
+import SpatialAudioBridge
+import SpatialAudioPlayback
 import SwiftUI
 
 @MainActor
@@ -46,6 +48,11 @@ class AVMediaPlayerProxy: NSObject,
     private(set) var pipController: AVPictureInPictureController?
 
     private var pendingSeekSeconds: Duration?
+    /// The latest seek and when it was requested, so that a stall recovery resumes there.
+    private var lastSeek: (seconds: Duration, date: ContinuousClock.Instant)?
+
+    /// Plays the current item's spatial audio until cancelled.
+    private var spatialAudioTask: Task<Void, Never>?
 
     private var cachedAudioStreams: [MediaStream] = []
     private var cachedSubtitleStreams: [MediaStream] = []
@@ -95,6 +102,7 @@ class AVMediaPlayerProxy: NSObject,
 
     func stop() {
         player.pause()
+        stopSpatialAudio()
     }
 
     func jumpForward(_ seconds: Duration) {
@@ -106,7 +114,7 @@ class AVMediaPlayerProxy: NSObject,
         let currentTime = player.currentTime()
         let newTime = currentTime + CMTime(seconds: seconds.seconds, preferredTimescale: 600)
 
-        player.seek(to: newTime, toleranceBefore: .zero, toleranceAfter: .zero)
+        seek(to: newTime)
     }
 
     func jumpBackward(_ seconds: Duration) {
@@ -118,7 +126,7 @@ class AVMediaPlayerProxy: NSObject,
         let currentTime = player.currentTime()
         let newTime = max(.zero, currentTime - CMTime(seconds: seconds.seconds, preferredTimescale: 600))
 
-        player.seek(to: newTime, toleranceBefore: .zero, toleranceAfter: .zero)
+        seek(to: newTime)
     }
 
     func setRate(_ rate: Double) {
@@ -134,8 +142,11 @@ class AVMediaPlayerProxy: NSObject,
             return
         }
 
-        let time = CMTime(seconds: seconds.seconds, preferredTimescale: 600)
+        seek(to: CMTime(seconds: seconds.seconds, preferredTimescale: 600))
+    }
 
+    private func seek(to time: CMTime) {
+        lastSeek = (.seconds(time.seconds), .now)
         player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
     }
 
@@ -277,16 +288,30 @@ extension AVMediaPlayerProxy: AVPictureInPictureControllerDelegate {
 extension AVMediaPlayerProxy {
 
     func playNew(item: MediaPlayerItem) {
-        let playerItem = AVPlayerItem(url: item.url)
-        playerItem.externalMetadata = item.baseItem.avMetadata
-
         removeItemObservers()
         addTimeObserver()
 
         pendingSeekSeconds = nil
+        lastSeek = nil
+        stopSpatialAudio()
 
         cachedAudioStreams = item.audioStreams.filter { $0.isExternal != true }
         cachedSubtitleStreams = item.subtitleStreams.filter { $0.isExternal != true }
+
+        if #available(iOS 26, tvOS 26, *), let spatialAudioURL = item.spatialAudioURL {
+            spatialAudioTask = Task { [weak self] in
+                await self?.playSpatialAudio(from: spatialAudioURL, for: item)
+            }
+        } else {
+            load(item.url, for: item)
+        }
+    }
+
+    private func load(_ url: URL, for item: MediaPlayerItem) {
+        let playerItem = AVPlayerItem(url: url)
+        playerItem.externalMetadata = item.baseItem.avMetadata
+
+        removeItemObservers()
 
         player.replaceCurrentItem(with: playerItem)
 
@@ -305,6 +330,7 @@ extension AVMediaPlayerProxy {
         #endif
 
         pendingSeekSeconds = nil
+        stopSpatialAudio()
 
         player.pause()
 
@@ -451,6 +477,22 @@ extension AVMediaPlayerProxy {
             case .failed:
                 let error = playerItem.error ?? self.player.error
                 DispatchQueue.main.async {
+                    // When spatial audio fails, the server's stream plays on from where it stopped
+                    if (playerItem.asset as? AVURLAsset)?.url != item.url {
+                        self.manager?.logger.warning("Spatial audio failed: \(error?.localizedDescription ?? L10n.unknownError)")
+                        self.stopSpatialAudio()
+
+                        let time = playerItem.currentTime()
+                        if time.isNumeric, time > .zero {
+                            self.pendingSeekSeconds = .seconds(time.seconds)
+                        } else if let seconds = self.manager?.seconds, seconds > .zero {
+                            self.pendingSeekSeconds = seconds
+                        }
+
+                        self.load(item.url, for: item)
+                        return
+                    }
+
                     self.manager?.error(ErrorMessage("AVPlayer error: \(error?.localizedDescription ?? L10n.unknownError)"))
                 }
 
@@ -464,11 +506,16 @@ extension AVMediaPlayerProxy {
         }
     }
 
-    private func itemDidBecomeReady(playerItem: AVPlayerItem, item: MediaPlayerItem) async {
-        let startSeconds = pendingSeekSeconds ?? max(
+    /// Where playback of `item` starts: at a seek requested before it was ready, or where it was left off.
+    private func initialSeconds(for item: MediaPlayerItem) -> Duration {
+        pendingSeekSeconds ?? max(
             .zero,
             (item.baseItem.startSeconds ?? .zero) - Duration.seconds(Defaults[.VideoPlayer.resumeOffset])
         )
+    }
+
+    private func itemDidBecomeReady(playerItem: AVPlayerItem, item: MediaPlayerItem) async {
+        let startSeconds = initialSeconds(for: item)
         pendingSeekSeconds = nil
 
         cachedAudioGroup = try? await playerItem.asset.loadMediaSelectionGroup(for: .audible)
@@ -562,6 +609,98 @@ extension AVMediaPlayerProxy {
         )
     }
     #endif
+}
+
+// MARK: - Spatial Audio
+
+extension AVMediaPlayerProxy {
+
+    /// Plays `item` with its TrueHD Atmos or DTS:X track converted to APAC beside the server's video, until cancelled.
+    /// Plays the server's audio instead if the track cannot be converted.
+    @available(iOS 26, tvOS 26, *)
+    private func playSpatialAudio(from fileURL: URL, for item: MediaPlayerItem) async {
+        let stream: APACStream
+
+        do {
+            let file = try await MatroskaFile.open(HTTPByteSource(url: fileURL))
+
+            // Jellyfin and Matroska both list the file's audio tracks in order
+            guard file.audioTracks.count == item.audioStreams.count,
+                  let position = item.audioStreams.firstIndex(where: { $0.index == item.selectedAudioStreamIndex }),
+                  file.audioTracks[position].codec != nil
+            else { throw ErrorMessage("Unable to find the selected audio track in the file") }
+
+            var options = APACStream.Options()
+            // Without Jellyfin's transcoding fallbacks, which AVPlayer switches to when a segment is slow
+            options.includesVideoVariant = { $0.query?.contains("AllowVideoStreamCopy=false") != true }
+
+            stream = try await APACStream.start(
+                file: file,
+                track: file.audioTracks[position],
+                videoMaster: item.url,
+                startTime: CMTime(seconds: initialSeconds(for: item).seconds, preferredTimescale: 600),
+                options: options
+            )
+        } catch {
+            guard !Task.isCancelled else { return }
+
+            manager?.logger.warning("Unable to play spatial audio: \(error)")
+            load(item.url, for: item)
+            return
+        }
+
+        guard let masterURL = stream.masterPlaylistURL, !Task.isCancelled else {
+            await stream.stop()
+            return
+        }
+
+        // Switches the receiver to Atmos while the stream's items play
+        let atmos = AtmosOutputActivator()
+        atmos.attach(to: player) { ($0.asset as? AVURLAsset)?.url == masterURL }
+
+        load(masterURL, for: item)
+        await recoverStalls(of: masterURL, for: item)
+
+        if (player.currentItem?.asset as? AVURLAsset)?.url == masterURL {
+            player.replaceCurrentItem(with: nil)
+        }
+        atmos.detach()
+        await stream.stop()
+    }
+
+    /// Reloads the item when AVPlayer has waited 20 s, as it can indefinitely after rapid seeks, until cancelled.
+    /// Seeks took up to 15 s to resume.
+    private func recoverStalls(of url: URL, for item: MediaPlayerItem) async {
+        var status = player.timeControlStatus
+        var statusDate = ContinuousClock.now
+
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+
+            if player.timeControlStatus != status {
+                status = player.timeControlStatus
+                statusDate = .now
+            }
+
+            // Five seconds of playback after a seek mean it resolved
+            if status == .playing, let lastSeek, ContinuousClock.now - max(statusDate, lastSeek.date) > .seconds(5) {
+                self.lastSeek = nil
+            }
+
+            guard status == .waitingToPlayAtSpecifiedRate, ContinuousClock.now - statusDate > .seconds(20) else { continue }
+
+            manager?.logger.warning("Reloading stalled spatial audio playback")
+            pendingSeekSeconds = lastSeek?.seconds ?? manager?.seconds
+            load(url, for: item)
+            statusDate = .now
+        }
+    }
+
+    private func stopSpatialAudio() {
+        spatialAudioTask?.cancel()
+        spatialAudioTask = nil
+    }
 }
 
 // MARK: - AVPlayerView
