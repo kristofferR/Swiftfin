@@ -480,6 +480,9 @@ extension AVMediaPlayerProxy {
             case .failed:
                 let error = playerItem.error ?? self.player.error
                 DispatchQueue.main.async {
+                    // A replaced item's late failure does not concern the current one
+                    guard self.player.currentItem === playerItem else { return }
+
                     // When spatial audio fails, the server's stream plays on from where it stopped
                     if self.spatialAudioTask != nil,
                        let url = (playerItem.asset as? AVURLAsset)?.url,
