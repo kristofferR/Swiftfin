@@ -144,7 +144,8 @@ extension MediaPlayerItem {
         // beside the server's video. Reading that file needs its full bitrate.
         let spatialAudioURL: URL? = if videoPlayerType == .avPlayer,
                                        mediaSource.transcodingURL != nil,
-                                       mediaSource.bitrate ?? 0 <= maxBitrate,
+                                       let bitrate = mediaSource.bitrate,
+                                       bitrate <= maxBitrate,
                                        mediaSource.supportsSpatialAudio(
                                            audioStreamIndex: audioStreamIndex ?? mediaSource.defaultAudioStreamIndex
                                        )

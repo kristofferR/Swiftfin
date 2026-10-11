@@ -299,6 +299,9 @@ extension AVMediaPlayerProxy {
         cachedSubtitleStreams = item.subtitleStreams.filter { $0.isExternal != true }
 
         if #available(iOS 26, tvOS 26, *), let spatialAudioURL = item.spatialAudioURL {
+            // Seeks wait for the new item while the stream starts
+            player.replaceCurrentItem(with: nil)
+
             spatialAudioTask = Task { [weak self] in
                 await self?.playSpatialAudio(from: spatialAudioURL, for: item)
             }
@@ -620,6 +623,7 @@ extension AVMediaPlayerProxy {
     @available(iOS 26, tvOS 26, *)
     private func playSpatialAudio(from fileURL: URL, for item: MediaPlayerItem) async {
         let stream: APACStream
+        let masterURL: URL
 
         do {
             let file = try await MatroskaFile.open(HTTPByteSource(url: fileURL))
@@ -641,6 +645,13 @@ extension AVMediaPlayerProxy {
                 startTime: CMTime(seconds: initialSeconds(for: item).seconds, preferredTimescale: 600),
                 options: options
             )
+
+            guard let url = stream.masterPlaylistURL else {
+                await stream.stop()
+                throw ErrorMessage("The spatial audio stream has no video")
+            }
+
+            masterURL = url
         } catch {
             guard !Task.isCancelled else { return }
 
@@ -649,7 +660,7 @@ extension AVMediaPlayerProxy {
             return
         }
 
-        guard let masterURL = stream.masterPlaylistURL, !Task.isCancelled else {
+        guard !Task.isCancelled else {
             await stream.stop()
             return
         }

@@ -59,19 +59,30 @@ struct MediaPlayerItemProvider {
     }
 
     /// The engine to play this item with.
-    /// A selected TrueHD Atmos or DTS:X track plays as spatial audio through AVPlayer, unless an image subtitle is
-    /// also selected: AVPlayer has the server burn it into the video, which the other engines avoid.
+    /// A selected TrueHD Atmos or DTS:X track plays as spatial audio through AVPlayer, beside the server's HLS video.
+    /// The selected engine stays when AVPlayer would direct play the file instead, or have the server burn an image
+    /// subtitle into the video, which the other engines avoid.
     var videoPlayerType: VideoPlayerType {
         let preferredPlayerType = Defaults[.VideoPlayer.videoPlayerType]
 
-        guard let mediaSource = mediaSource ?? item.mediaSources?.first,
-              mediaSource.supportsSpatialAudio(audioStreamIndex: audioStreamIndex ?? mediaSource.defaultAudioStreamIndex)
-        else { return preferredPlayerType }
+        guard let mediaSource = mediaSource ?? item.mediaSources?.first else { return preferredPlayerType }
 
+        let audioStreamIndex = audioStreamIndex ?? mediaSource.defaultAudioStreamIndex
+        let audioStream = mediaSource.audioStreams?.first { $0.index == audioStreamIndex }
         let subtitleStreamIndex = subtitleStreamIndex ?? mediaSource.defaultSubtitleStreamIndex
         let subtitleStream = mediaSource.subtitleStreams?.first { $0.index == subtitleStreamIndex }
 
-        return subtitleStream?.isTextSubtitleStream == false ? preferredPlayerType : .avPlayer
+        let avPlayerProfile = DeviceProfile.build(
+            for: .avPlayer,
+            compatibilityMode: Defaults[.VideoPlayer.Playback.compatibilityMode]
+        )
+
+        guard mediaSource.supportsSpatialAudio(audioStreamIndex: audioStreamIndex),
+              !avPlayerProfile.canPlay(type: .video, audioCodec: audioStream?.codec, container: mediaSource.container),
+              subtitleStream?.isTextSubtitleStream != false
+        else { return preferredPlayerType }
+
+        return .avPlayer
     }
 
     func callAsFunction(videoPlayerType: VideoPlayerType) async throws -> MediaPlayerItem {
