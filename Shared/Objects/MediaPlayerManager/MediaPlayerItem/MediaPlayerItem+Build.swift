@@ -145,7 +145,7 @@ extension MediaPlayerItem {
         let spatialAudioURL: URL? = if videoPlayerType == .avPlayer,
                                        mediaSource.transcodingURL != nil,
                                        mediaSource.supportsSpatialAudio(
-                                           audioStreamIndex: audioStreamIndex ?? mediaSource.defaultAudioStreamIndex,
+                                           audioStreamIndex: audioStreamIndex,
                                            maxBitrate: maxBitrate
                                        )
         {

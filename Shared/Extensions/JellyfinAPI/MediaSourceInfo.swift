@@ -47,6 +47,12 @@ extension MediaSourceInfo {
         mediaStreams?.filter { $0.type == .video }
     }
 
+    /// The selected audio stream, or the one that plays when none is selected: the default, else the first.
+    func audioStream(selectedIndex: Int?) -> MediaStream? {
+        let index = selectedIndex ?? defaultAudioStreamIndex ?? audioStreams?.first?.index
+        return audioStreams?.first { $0.index == index }
+    }
+
     /// Whether AVPlayer can try to play this audio stream as spatial audio.
     /// SpatialAudioBridge converts TrueHD Atmos and DTS:X tracks in Matroska files on iOS and tvOS 26. Jellyfin reports
     /// some DTS:X tracks as plain DTS-HD MA, so the library is offered every TrueHD and DTS-HD MA track and rejects the
@@ -57,7 +63,7 @@ extension MediaSourceInfo {
               container == "mkv",
               let bitrate,
               bitrate <= maxBitrate ?? .max,
-              let stream = audioStreams?.first(where: { $0.index == audioStreamIndex }),
+              let stream = audioStream(selectedIndex: audioStreamIndex),
               stream.isExternal != true
         else { return false }
 

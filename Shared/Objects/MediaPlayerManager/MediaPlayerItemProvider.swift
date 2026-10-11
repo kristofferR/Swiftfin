@@ -67,8 +67,7 @@ struct MediaPlayerItemProvider {
 
         guard let mediaSource = mediaSource ?? item.mediaSources?.first else { return preferredPlayerType }
 
-        let audioStreamIndex = audioStreamIndex ?? mediaSource.defaultAudioStreamIndex
-        let audioStream = mediaSource.audioStreams?.first { $0.index == audioStreamIndex }
+        let audioStream = mediaSource.audioStream(selectedIndex: audioStreamIndex)
         let subtitleStreamIndex = subtitleStreamIndex ?? mediaSource.defaultSubtitleStreamIndex
         let subtitleStream = mediaSource.subtitleStreams?.first { $0.index == subtitleStreamIndex }
 
