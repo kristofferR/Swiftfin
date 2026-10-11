@@ -481,7 +481,10 @@ extension AVMediaPlayerProxy {
                 let error = playerItem.error ?? self.player.error
                 DispatchQueue.main.async {
                     // When spatial audio fails, the server's stream plays on from where it stopped
-                    if (playerItem.asset as? AVURLAsset)?.url != item.url {
+                    if self.spatialAudioTask != nil,
+                       let url = (playerItem.asset as? AVURLAsset)?.url,
+                       url != item.url
+                    {
                         self.manager?.logger.warning("Spatial audio failed: \(error?.localizedDescription ?? L10n.unknownError)")
                         self.stopSpatialAudio()
 
