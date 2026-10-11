@@ -686,10 +686,11 @@ extension AVMediaPlayerProxy {
     }
 
     /// Reloads the item when AVPlayer has waited 20 s, as it can indefinitely after rapid seeks, until cancelled.
-    /// Seeks took up to 15 s to resume.
+    /// Seeks took up to 15 s to resume. If two reloads in a row do not play, the server's audio plays instead.
     private func recoverStalls(of url: URL, for item: MediaPlayerItem) async {
         var status = player.timeControlStatus
         var statusDate = ContinuousClock.now
+        var reloads = 0
 
         while !Task.isCancelled {
             try? await Task.sleep(for: .seconds(1))
@@ -698,6 +699,10 @@ extension AVMediaPlayerProxy {
             if player.timeControlStatus != status {
                 status = player.timeControlStatus
                 statusDate = .now
+
+                if status == .playing {
+                    reloads = 0
+                }
             }
 
             // Five seconds of playback after a seek mean it resolved
@@ -707,9 +712,18 @@ extension AVMediaPlayerProxy {
 
             guard status == .waitingToPlayAtSpecifiedRate, ContinuousClock.now - statusDate > .seconds(20) else { continue }
 
-            manager?.logger.warning("Reloading stalled spatial audio playback")
             pendingSeekSeconds = lastSeek?.seconds ?? manager?.seconds
+
+            guard reloads < 2 else {
+                manager?.logger.warning("Spatial audio keeps stalling, playing the server's audio")
+                stopSpatialAudio()
+                load(item.url, for: item)
+                return
+            }
+
+            manager?.logger.warning("Reloading stalled spatial audio playback")
             loadSpatialAudio(url, for: item)
+            reloads += 1
             statusDate = .now
         }
     }
