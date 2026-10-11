@@ -47,9 +47,10 @@ extension MediaSourceInfo {
         mediaStreams?.filter { $0.type == .video }
     }
 
-    /// Whether AVPlayer can play this audio stream as spatial audio.
-    /// SpatialAudioBridge converts TrueHD Atmos and DTS:X tracks in Matroska files on iOS and tvOS 26.
-    /// It reads the whole file, so the file's bitrate must fit `maxBitrate`, when that is known.
+    /// Whether AVPlayer can try to play this audio stream as spatial audio.
+    /// SpatialAudioBridge converts TrueHD Atmos and DTS:X tracks in Matroska files on iOS and tvOS 26. Jellyfin reports
+    /// some DTS:X tracks as plain DTS-HD MA, so the library is offered every TrueHD and DTS-HD MA track and rejects the
+    /// others as it starts. It reads the whole file, so the file's bitrate must fit `maxBitrate`, when that is known.
     func supportsSpatialAudio(audioStreamIndex: Int?, maxBitrate: Int?) -> Bool {
         guard #available(iOS 26, tvOS 26, *),
               Defaults[.VideoPlayer.spatialAudio],
@@ -60,10 +61,7 @@ extension MediaSourceInfo {
               stream.isExternal != true
         else { return false }
 
-        return switch (stream.codec, stream.audioSpatialFormat) {
-        case ("truehd", .dolbyAtmos), ("dts", .dtsx): true
-        default: false
-        }
+        return stream.codec == "truehd" || (stream.codec == "dts" && stream.profile?.hasPrefix("DTS-HD MA") == true)
     }
 }
 

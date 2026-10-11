@@ -73,7 +73,7 @@ class MediaPlayerItem: ViewModel, MediaPlayerObserver {
     let previewImageProvider: (any PreviewImageProvider)?
     let thumbnailProvider: ThumbnailProvider?
     let url: URL
-    /// The original file, when AVPlayer plays its selected TrueHD Atmos or DTS:X track as spatial audio beside the video at `url`.
+    /// The original file, when AVPlayer tries to play its selected TrueHD or DTS-HD MA track as spatial audio beside the video at `url`.
     let spatialAudioURL: URL?
 
     let audioStreams: [MediaStream]

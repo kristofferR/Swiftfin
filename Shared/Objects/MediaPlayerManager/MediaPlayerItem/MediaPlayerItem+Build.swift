@@ -141,7 +141,7 @@ extension MediaPlayerItem {
         )
 
         // AVPlayer plays TrueHD Atmos and DTS:X as spatial audio converted from the original file,
-        // beside the server's video
+        // beside the server's video, and the server's audio for other TrueHD and DTS-HD MA tracks
         let spatialAudioURL: URL? = if videoPlayerType == .avPlayer,
                                        mediaSource.transcodingURL != nil,
                                        mediaSource.supportsSpatialAudio(
