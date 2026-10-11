@@ -672,7 +672,7 @@ extension AVMediaPlayerProxy {
         let atmos = AtmosOutputActivator()
         atmos.attach(to: player) { ($0.asset as? AVURLAsset)?.url == masterURL }
 
-        load(masterURL, for: item)
+        loadSpatialAudio(masterURL, for: item)
         await recoverStalls(of: masterURL, for: item)
 
         if (player.currentItem?.asset as? AVURLAsset)?.url == masterURL {
@@ -706,9 +706,20 @@ extension AVMediaPlayerProxy {
 
             manager?.logger.warning("Reloading stalled spatial audio playback")
             pendingSeekSeconds = lastSeek?.seconds ?? manager?.seconds
-            load(url, for: item)
+            loadSpatialAudio(url, for: item)
             statusDate = .now
         }
+    }
+
+    /// Loads the stream's item and seeks before it is ready, so that AVPlayer requests the start position's segments
+    /// first instead of converting from the beginning.
+    private func loadSpatialAudio(_ url: URL, for item: MediaPlayerItem) {
+        load(url, for: item)
+        player.seek(
+            to: CMTime(seconds: initialSeconds(for: item).seconds, preferredTimescale: 600),
+            toleranceBefore: .zero,
+            toleranceAfter: .zero
+        )
     }
 
     private func stopSpatialAudio() {
