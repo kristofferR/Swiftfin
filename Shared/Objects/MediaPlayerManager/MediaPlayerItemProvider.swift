@@ -77,7 +77,10 @@ struct MediaPlayerItemProvider {
             compatibilityMode: Defaults[.VideoPlayer.Playback.compatibilityMode]
         )
 
-        guard mediaSource.supportsSpatialAudio(audioStreamIndex: audioStreamIndex),
+        // The automatic bitrate is measured once playback starts
+        let maxBitrate = requestedBitrate == .auto ? nil : requestedBitrate.rawValue
+
+        guard mediaSource.supportsSpatialAudio(audioStreamIndex: audioStreamIndex, maxBitrate: maxBitrate),
               !avPlayerProfile.canPlay(type: .video, audioCodec: audioStream?.codec, container: mediaSource.container),
               subtitleStream?.isTextSubtitleStream != false
         else { return preferredPlayerType }

@@ -141,13 +141,12 @@ extension MediaPlayerItem {
         )
 
         // AVPlayer plays TrueHD Atmos and DTS:X as spatial audio converted from the original file,
-        // beside the server's video. Reading that file needs its full bitrate.
+        // beside the server's video
         let spatialAudioURL: URL? = if videoPlayerType == .avPlayer,
                                        mediaSource.transcodingURL != nil,
-                                       let bitrate = mediaSource.bitrate,
-                                       bitrate <= maxBitrate,
                                        mediaSource.supportsSpatialAudio(
-                                           audioStreamIndex: audioStreamIndex ?? mediaSource.defaultAudioStreamIndex
+                                           audioStreamIndex: audioStreamIndex ?? mediaSource.defaultAudioStreamIndex,
+                                           maxBitrate: maxBitrate
                                        )
         {
             try staticVideoStreamURL(

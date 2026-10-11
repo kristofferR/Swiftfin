@@ -49,10 +49,13 @@ extension MediaSourceInfo {
 
     /// Whether AVPlayer can play this audio stream as spatial audio.
     /// SpatialAudioBridge converts TrueHD Atmos and DTS:X tracks in Matroska files on iOS and tvOS 26.
-    func supportsSpatialAudio(audioStreamIndex: Int?) -> Bool {
+    /// It reads the whole file, so the file's bitrate must fit `maxBitrate`, when that is known.
+    func supportsSpatialAudio(audioStreamIndex: Int?, maxBitrate: Int?) -> Bool {
         guard #available(iOS 26, tvOS 26, *),
               Defaults[.VideoPlayer.spatialAudio],
               container == "mkv",
+              let bitrate,
+              bitrate <= maxBitrate ?? .max,
               let stream = audioStreams?.first(where: { $0.index == audioStreamIndex }),
               stream.isExternal != true
         else { return false }
