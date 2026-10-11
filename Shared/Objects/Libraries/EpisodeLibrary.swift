@@ -30,7 +30,8 @@ struct EpisodeLibrary: BaseItemKindLibrary {
 
         var parameters = Paths.GetEpisodesParameters()
         parameters.enableUserData = true
-        parameters.fields = PosterSubtitleField.itemFields + [.overview]
+        // Episode cards play these items directly, and the session's engine depends on their media sources
+        parameters.fields = PosterSubtitleField.itemFields + [.mediaSources, .overview]
         parameters.isMissing = Defaults[.Customization.shouldShowMissingEpisodes] ? nil : false
         parameters.seasonID = seasonID
         parameters.userID = pageState.userSession.user.id
